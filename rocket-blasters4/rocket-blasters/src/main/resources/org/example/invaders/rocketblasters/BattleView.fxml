@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<BorderPane xmlns="http://javafx.com/javafx/22" xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="org.example.invaders.rocketblasters.HeadToHeadController"
+            prefWidth="800" prefHeight="600" style="-fx-background-color:#0b1220;">
+    <top>
+        <Label text="Head-to-Head (experimental)" textFill="white" BorderPane.alignment="CENTER">
+            <padding><Insets top="16" bottom="8"/></padding>
+        </Label>
+    </top>
+    <center>
+        <VBox alignment="CENTER" spacing="12">
+            <children>
+                <HBox spacing="8" alignment="CENTER">
+                    <children>
+                        <Label text="Port:" textFill="white"/>
+                        <TextField fx:id="portField" promptText="5555" prefWidth="120"/>
+                        <Button text="Host" onAction="#onHost"/>
+                    </children>
+                </HBox>
+                <HBox spacing="8" alignment="CENTER">
+                    <children>
+                        <Label text="Host IP:" textFill="white"/>
+                        <TextField fx:id="hostField" promptText="127.0.0.1" prefWidth="160"/>
+                        <Label text="Port:" textFill="white"/>
+                        <TextField fx:id="joinPortField" promptText="5555" prefWidth="120"/>
+                        <Button text="Join" onAction="#onJoin"/>
+                    </children>
+                </HBox>
+                <Label fx:id="statusLabel" text="Status: idle" textFill="lightgray"/>
+                <Button text="Back to Menu" onAction="#onBackToMenu"/>
+            </children>
+        </VBox>
+    </center>
+</BorderPane>

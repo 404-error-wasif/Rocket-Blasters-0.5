@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.canvas.Canvas?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.text.Font?>
+
+<BorderPane xmlns="http://javafx.com/javafx/22"
+            xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="org.example.invaders.rocketblasters.H2HGameController"
+            prefWidth="1460" prefHeight="980"
+            style="-fx-background-color:#0b1220;">
+
+    <top>
+        <HBox spacing="24" alignment="CENTER" BorderPane.alignment="CENTER">
+            <children>
+                <Label fx:id="lblP1" text="Green HP: 5" textFill="LIME">
+                    <font><Font size="16"/></font>
+                </Label>
+                <Region HBox.hgrow="ALWAYS"/>
+                <Label fx:id="lblTimer" text="03:00" textFill="WHITE">
+                    <font><Font size="18"/></font>
+                </Label>
+                <Region HBox.hgrow="ALWAYS"/>
+                <Label fx:id="lblP2" text="Red HP: 5" textFill="CRIMSON">
+                    <font><Font size="16"/></font>
+                </Label>
+            </children>
+            <padding><Insets top="10" right="14" bottom="10" left="14"/></padding>
+        </HBox>
+    </top>
+
+    <center>
+        <StackPane>
+            <children>
+                <Canvas fx:id="canvas" width="1400" height="900"/>
+                <VBox fx:id="gameOverBox" visible="false" alignment="CENTER" spacing="12"
+                      style="-fx-background-color: rgba(0,0,0,0.5); -fx-padding: 16;">
+                    <children>
+                        <Label text="Round over" textFill="WHITE">
+                            <font><Font size="22"/></font>
+                        </Label>
+                    </children>
+                </VBox>
+            </children>
+            <padding><Insets top="10" right="10" bottom="10" left="10"/></padding>
+        </StackPane>
+    </center>
+
+    <!-- NOTE: No onAction here; we'll wire in the controller -->
+    <bottom>
+        <HBox spacing="12" alignment="CENTER" BorderPane.alignment="CENTER">
+            <children>
+                <Button fx:id="restartBtn" text="Restart (Enter)" focusTraversable="false"/>
+                <Button fx:id="exitBtn"    text="Back to Menu (Esc)" focusTraversable="false"/>
+            </children>
+            <padding><Insets top="8" right="10" bottom="14" left="10"/></padding>
+        </HBox>
+    </bottom>
+
+</BorderPane>

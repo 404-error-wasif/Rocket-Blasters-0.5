@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<BorderPane xmlns="http://javafx.com/javafx/22" xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="org.example.invaders.rocketblasters.LeaderboardController"
+            prefWidth="800" prefHeight="600" style="-fx-background-color:#0b1220;">
+    <top>
+        <Label text="🏆 Top Players – Ranked Mode" textFill="white" BorderPane.alignment="CENTER">
+            <padding><Insets top="16" bottom="8"/></padding>
+        </Label>
+    </top>
+    <center>
+        <VBox alignment="CENTER" spacing="8">
+            <children>
+                <TableView fx:id="table" prefWidth="520" prefHeight="420">
+                    <columns>
+                        <TableColumn fx:id="colRank" text="Rank" prefWidth="80"/>
+                        <TableColumn fx:id="colName" text="Player" prefWidth="240"/>
+                        <TableColumn fx:id="colScore" text="Score" prefWidth="120"/>
+                    </columns>
+                </TableView>
+                <Button text="Back to Menu" onAction="#onBackToMenu"/>
+            </children>
+        </VBox>
+    </center>
+</BorderPane>
