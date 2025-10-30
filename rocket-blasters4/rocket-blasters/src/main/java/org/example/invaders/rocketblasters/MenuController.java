@@ -6,6 +6,7 @@ import javafx.scene.control.Label;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
+import org.example.invaders.rocketblasters.util.GameMode;
 
 public class MenuController {
 
@@ -23,16 +24,21 @@ public class MenuController {
     // ---------- Navigation ----------
     @FXML
     private void onSinglePlayer() {
+        MainApp.currentGameMode = GameMode.SINGLE_PLAYER;
+        System.out.println("DEBUG: Set game mode to SINGLE_PLAYER");
         MainApp.setRoot("/org/example/invaders/rocketblasters/GameView.fxml");
     }
 
     @FXML
     private void onHeadToHead() {
+        MainApp.currentGameMode = GameMode.HEAD_TO_HEAD;
         MainApp.setRoot("/org/example/invaders/rocketblasters/BattleView.fxml");
     }
 
     @FXML
     private void onMultiplayerRanked() {
+        MainApp.currentGameMode = GameMode.MULTIPLAYER_RANKED;
+        System.out.println("DEBUG: Set game mode to MULTIPLAYER_RANKED");
         // Point to your ranked/multiplayer scene if/when you have it
         MainApp.setRoot("/org/example/invaders/rocketblasters/LeaderboardView.fxml");
     }

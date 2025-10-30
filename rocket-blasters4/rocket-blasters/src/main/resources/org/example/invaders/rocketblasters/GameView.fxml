@@ -32,10 +32,9 @@
         </HBox>
     </top>
     <center>
-        <StackPane>
-            <children>
-                <Canvas fx:id="canvas" height="900" width="1400" />
-            </children>
+        <StackPane fx:id="centerPane"> <children>
+            <Canvas fx:id="canvas" />
+        </children>
         </StackPane>
     </center>
     <bottom>

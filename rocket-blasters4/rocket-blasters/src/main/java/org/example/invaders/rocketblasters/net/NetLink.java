@@ -41,7 +41,6 @@ public class NetLink implements Runnable {
         }
     }
 
-    // ===== send API =====
 
     /** Low-level helper used by all send* methods. */
     private synchronized void sendRaw(String line) {

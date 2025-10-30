@@ -19,6 +19,19 @@ import java.io.*;
 import java.net.URL;
 import java.util.*;
 
+// At the top of GameController.java
+import org.example.invaders.rocketblasters.util.GameMode;
+import org.example.invaders.rocketblasters.util.Leaderboard;
+import javafx.scene.control.TextInputDialog; // For player name input
+import java.util.Optional; // For player name input result
+
+// At the top of GameController.java
+import javafx.application.Platform; // Already likely there
+import javafx.scene.control.TextInputDialog; // For the pop-up
+import java.util.Optional; // To handle the result of the pop-up
+import org.example.invaders.rocketblasters.util.GameMode; // To check game mode
+import org.example.invaders.rocketblasters.util.Leaderboard; // To save score
+
 public class GameController {
 
     // ===== FXML =====
@@ -26,6 +39,7 @@ public class GameController {
     @FXML private Label scoreLabel;
     @FXML private Label livesLabel;
     @FXML private Label bestLabel;
+    @FXML private StackPane centerPane;
 
     // ===== Render/Input =====
     private GraphicsContext g;
@@ -35,14 +49,15 @@ public class GameController {
 
     // ===== Background video =====
     private MediaPlayer bgPlayer;
-    private boolean videoOk = false;          // if false, we draw a starfield fallback
+    private boolean videoOk = false;
+    private boolean needsInitialSpawn = true;// if false, we draw a starfield fallback
 
     // ===== Player (image ship) =====
     private double px, py, pvx, pvy;
     private static final double P_SPEED = 400;
 
     private Image shipImg;
-    private double shipW = 90, shipH = 120;
+    private double shipW = 60, shipH = 80;
     private double shipHalfW = shipW / 2.0, shipHalfH = shipH / 2.0;
     private double P_R = Math.min(shipW, shipH) * 0.38;
 
@@ -54,14 +69,15 @@ public class GameController {
     private static class Bullet { double x,y,vy; Bullet(double x,double y,double vy){this.x=x;this.y=y;this.vy=vy;} }
     private final List<Bullet> bullets = new ArrayList<>();
 
-    // ===== Enemies (rocket sprites + pulsing glow) =====
-    private static final double E_R = 14;                 // collision radius
+    // ===== Enemies (rocket sprites + pulsing glow) ====
     private final List<double[]> enemies = new ArrayList<>(); // {x,y,vx,vy}
     private double spawnTimer = 0;
     private Image enemyImg;                               // sprite used for enemies
+
     // draw size for enemy rockets
-    private double enemyW = 72, enemyH = 96;
+    private double enemyW = 48, enemyH = 64;
     private double enemyHalfW = enemyW/2.0, enemyHalfH = enemyH/2.0;
+    private double E_R = Math.min(enemyW, enemyH) * 0.25;
 
     // Glow animation phase (seconds)
     private double glowPhase = 0.0;
@@ -83,8 +99,18 @@ public class GameController {
     @FXML
     public void initialize() {
         g = canvas.getGraphicsContext2D();
+
+        // Bind canvas size to parent pane size
+        if (centerPane != null) {
+            canvas.widthProperty().bind(centerPane.widthProperty());
+            canvas.heightProperty().bind(centerPane.heightProperty());
+        } else {
+            System.err.println("Center StackPane not injected - Canvas resizing might not work.");
+        }
+
         loadShipImage();
-        loadEnemyImage();       // <--- load enemy rocket sprite
+        loadEnemyImage();// <--- load enemy rocket sprite
+        loadPowerUpImages();
         setupBackgroundVideo();
         loadBest();
         updateHud(); // show initial values
@@ -205,18 +231,37 @@ public class GameController {
 
     private void resetGame() {
         score = 0; lives = 3;
-        bullets.clear(); enemies.clear();
+        bullets.clear();
+        enemies.clear();
+        powerUps.clear();
         fireCooldown = 0; spawnTimer = 0; lastNs = 0;
+        powerUpSpawnTimer = 5.0;
 
-        double w = Math.max(600, canvas.getWidth());
-        double h = Math.max(400, canvas.getHeight());
-        px = w * 0.5; py = h - 100; pvx = 0; pvy = 0;
+        shieldActive = false; shieldTimer = 0; // Reset shield status
+        rapidFireActive = false; rapidFireTimer = 0; // Reset rapid fire status
+
+        pvx = 0; pvy = 0;
+        needsInitialSpawn = true;
 
         if (!videoOk) initStars();
         updateHud();
     }
 
     private void tick(double dt) {
+
+        if (needsInitialSpawn) {
+            double w = canvas.getWidth();
+            double h = canvas.getHeight();
+            if (w > 0 && h > 0) { // Ensure canvas has valid dimensions
+                px = w * 0.5;
+                py = h - shipHalfH - 20; // Position near bottom, offset by half height + buffer
+                needsInitialSpawn = false; // Only do this once per game start/reset
+                System.out.println("Initial spawn: Canvas H=" + h + ", py set to " + py); // Debug
+            } else {
+                return; // Wait until canvas has dimensions
+            }
+        }
+
         // movement (WASD or arrows)
         pvx = 0; pvy = 0;
         if (keys.contains(KeyCode.A) || keys.contains(KeyCode.LEFT))  pvx -= P_SPEED;
@@ -234,7 +279,7 @@ public class GameController {
         fireCooldown = Math.max(0, fireCooldown - dt);
         if (shoot && fireCooldown == 0.0) {
             bullets.add(new Bullet(px, py - shipHalfH, -B_SPD)); // from nose
-            fireCooldown = FIRE_CD;
+            fireCooldown = rapidFireActive ? (FIRE_CD * RAPID_FIRE_MULTIPLIER) : FIRE_CD;
         }
 
         // bullets vs enemies
@@ -262,6 +307,51 @@ public class GameController {
             spawnTimer = 3.0; // slower waves
         }
 
+        // --- Power-up Spawning ---
+        powerUpSpawnTimer -= dt;
+        if (powerUpSpawnTimer <= 0) {
+            // Reset timer with some randomness
+            powerUpSpawnTimer = 4.0 + rnd.nextDouble() * 4.0; // Spawn between 4-8 seconds
+
+            // Small chance to spawn a power-up
+            if (rnd.nextDouble() < 0.3) { // 30% chance each time the timer hits
+                spawnRandomPowerUp();
+            }
+        }
+
+        // --- Power-up Movement & Collection ---
+        for (int i = powerUps.size() - 1; i >= 0; i--) {
+            PowerUp p = powerUps.get(i);
+            p.y += p.vy * dt;
+
+            // Remove if off-screen
+            if (p.y > canvas.getHeight() + p.radius * 2) {
+                powerUps.remove(i);
+                continue;
+            }
+
+            // Check collision with player
+            if (hit(px, py, P_R, p.x, p.y, p.radius)) {
+                applyPowerUp(p.type);
+                powerUps.remove(i);
+                // Add sound effect here if you have one
+            }
+        }
+
+        // --- Update Active Power-up Timers ---
+        if (shieldActive) {
+            shieldTimer -= dt;
+            if (shieldTimer <= 0) {
+                shieldActive = false;
+            }
+        }
+        if (rapidFireActive) {
+            rapidFireTimer -= dt;
+            if (rapidFireTimer <= 0) {
+                rapidFireActive = false;
+            }
+        }
+
         // enemies move & collisions
         double w = canvas.getWidth(), h = canvas.getHeight();
         for (int i = enemies.size()-1; i >= 0; i--) {
@@ -271,16 +361,35 @@ public class GameController {
             if (e[0] < E_R)     { e[0] = E_R;     e[2] = Math.abs(e[2]); }
             if (e[0] > w - E_R) { e[0] = w - E_R; e[2] = -Math.abs(e[2]); }
 
+            //previous collision check:
+            /*
             if (e[1] > h - 40 || hit(px, py, P_R, e[0], e[1], E_R)) {
                 enemies.remove(i);
-                lives--;
+                lives--; // <-- THIS LINE
                 updateHud();
                 if (lives <= 0) { gameOver(); return; }
+            }
+            */
+            // With this check for the shield:
+
+            if (e[1] > h - 40 || hit(px, py, P_R, e[0], e[1], E_R)) {
+                enemies.remove(i);
+                if (!shieldActive) { // Only lose a life if shield is NOT active
+                    lives--;
+                    updateHud();
+                    if (lives <= 0) { gameOver(); return; }
+                } else {
+                    // Shield absorbed the hit - optionally deactivate shield immediately or play a sound
+                    shieldActive = false; // Example: Shield breaks on hit
+                    shieldTimer = 0;
+                    // Maybe play shield impact sound
+                }
             }
         }
     }
 
     private void render(double dt) {
+        clampPlayer();
         double w = canvas.getWidth(), h = canvas.getHeight();
 
         // Fallback background
@@ -296,15 +405,73 @@ public class GameController {
 
         // player ship (fallback to circle if image missing)
         if (shipImg != null) {
-            g.drawImage(shipImg, px - shipHalfW, py - shipHalfH, shipW, shipH);
-        } else {
+            double currentCanvasHeight = canvas.getHeight(); // Get height right before drawing
+            // Calculate the maximum allowed Y for the ship's center to keep it fully visible
+            double maxY = currentCanvasHeight - shipHalfH;
+            // Ensure the drawing Y position doesn't exceed this limit
+            double drawY = Math.min(py, maxY); // Use the clamped py OR maxY, whichever is smaller
+            // Also ensure it doesn't go above the top
+            drawY = Math.max(shipHalfH, drawY);
+
+            // *** Use drawY for drawing, instead of py directly ***
+            g.drawImage(shipImg, px - shipHalfW, drawY - shipHalfH, shipW, shipH);
+
+            // Optional Debug Print (uncomment to check values):
+            // if (py > maxY) {
+            //     System.out.printf("RENDER CLAMP: py=%.1f > maxY=%.1f. Drawing at %.1f (CanvasH=%.1f)\n", py, maxY, drawY, currentCanvasHeight);
+            } else {
+            // Fallback drawing (circle) - Apply similar clamping if needed
+            double currentCanvasHeight = canvas.getHeight();
+            double maxY = currentCanvasHeight - P_R;
+            double drawY = Math.min(py, maxY);
+            drawY = Math.max(P_R, drawY); // Use P_R for radius clamping here
+
             g.setFill(Color.LIMEGREEN);
-            g.fillOval(px - P_R, py - P_R, P_R*2, P_R*2);
+            g.fillOval(px - P_R, drawY - P_R, P_R*2, P_R*2);
         }
 
         // bullets
         g.setFill(Color.WHITE);
         for (Bullet b: bullets) g.fillOval(b.x - B_R, b.y - B_R, B_R*2, B_R*2);
+
+        // --- Render Power-ups ---
+        for (PowerUp p : powerUps) {
+            Image imgToDraw = null;
+            switch (p.type) {
+                case SHIELD:       imgToDraw = shieldPowerUpImg;       break;
+                case RAPID_FIRE:   imgToDraw = rapidFirePowerUpImg;   break;
+                case EXTRA_LIFE:   imgToDraw = extraLifePowerUpImg;   break;
+                case SCORE_BONUS:  imgToDraw = scoreBonusPowerUpImg;  break;
+            }
+
+            if (imgToDraw != null) {
+                // Draw the image centered at the power-up's position
+                g.drawImage(imgToDraw, p.x - powerUpHalfW, p.y - powerUpHalfH, powerUpDrawW, powerUpDrawH);
+            } else {
+                // Fallback: Draw colored circles if image loading failed
+                switch (p.type) {
+                    case SHIELD:       g.setFill(Color.CYAN);       break;
+                    case RAPID_FIRE:   g.setFill(Color.ORANGERED); break;
+                    case EXTRA_LIFE:   g.setFill(Color.LIMEGREEN); break;
+                    case SCORE_BONUS:  g.setFill(Color.GOLD);       break;
+                    default:           g.setFill(Color.MAGENTA);   break;
+                }
+                g.fillOval(p.x - p.radius, p.y - p.radius, p.radius * 2, p.radius * 2);
+            }
+        }
+
+        // --- Render Shield Effect ---
+        if (shieldActive) {
+            double shieldRadius = P_R * 1.5; // Make shield visual slightly larger than collision radius
+            // Draw a semi-transparent blue circle around the player
+            g.setFill(Color.color(0.3, 0.5, 1.0, 0.4)); // Light blue, semi-transparent
+            g.fillOval(px - shieldRadius, py - shieldRadius, shieldRadius * 2, shieldRadius * 2);
+            // Optionally add a border
+            g.setStroke(Color.color(0.7, 0.8, 1.0, 0.7));
+            g.setLineWidth(2);
+            g.strokeOval(px - shieldRadius, py - shieldRadius, shieldRadius * 2, shieldRadius * 2);
+            g.setLineWidth(1); // Reset line width
+        }
 
         // enemies as rockets (rotate to face downward) with pulsing red glow
         if (enemyImg != null) {
@@ -391,17 +558,48 @@ public class GameController {
         double dx=x1-x2, dy=y1-y2, rr=r1+r2; return dx*dx+dy*dy <= rr*rr;
     }
 
+    // Inside GameController.javas
     private void clampPlayer() {
-        double w = Math.max(2, canvas.getWidth());
-        double h = Math.max(2, canvas.getHeight());
+        double w = canvas.getWidth();  // Current canvas width
+        double h = canvas.getHeight(); // Current canvas height
+
+        // Check if dimensions are valid (avoid dividing by zero or clamping in tiny space)
+        if (w <= shipW || h <= shipH) {
+            // Optional: Print a warning if canvas size is problematic
+            // System.out.println("WARN: Canvas size too small for clamping (" + w + "x" + h + ")");
+            return;
+        }
+
+        // --- Clamping Logic ---
+        // Clamp Left boundary
         px = Math.max(shipHalfW, Math.min(w - shipHalfW, px));
+        // Clamp Right boundary
         py = Math.max(shipHalfH, Math.min(h - shipHalfH, py));
+
+        double bottomLimit = h - shipHalfH;
+        if (py > bottomLimit) {
+            System.out.println("CORRECTING: py (" + py + ") exceeded bottomLimit (" + bottomLimit + ")"); // Debug
+            py = bottomLimit;
+        }
+
+        // Clamp Top boundary
+        //py = Math.max(shipHalfH, py);
+        // Clamp Bottom boundary
+        //py = Math.min(h - shipHalfH, py); // Prevent ship center going below h - half height
+
+        // --- Debugging ---
+        // Uncomment the line below temporarily if needed to see values:
+        // System.out.printf("Canvas H: %.1f, Ship py: %.1f, Clamped py: %.1f, Max py allowed: %.1f\n", h, pyBeforeClamp, py, h - shipHalfH);
+        // Note: To use pyBeforeClamp, you'd need to store the py value before clamping.
+        // Simpler check: Print py after clamping
+        // System.out.printf("Clamped py: %.1f (Max allowed: %.1f)\n", py, h - shipHalfH);
     }
 
     private void gameOver() {
+        System.out.println("DEBUG: gameOver() method called. Score: " + score + ", Lives: " + lives);
         if (loop != null) loop.stop();
         running = false;
-        saveBest();
+        handleEndOfGameScore();
         updateHud();
         g.setFill(Color.WHITE);
         g.fillText("Game Over! Score: " + score,
@@ -449,4 +647,162 @@ public class GameController {
             pw.println(best);
         } catch (Exception ignored) {}
     }
+
+    // ===== Power-ups =====
+
+    // Images for Power-ups
+    private Image shieldPowerUpImg;
+    private Image rapidFirePowerUpImg;
+    private Image extraLifePowerUpImg;
+    private Image scoreBonusPowerUpImg;
+
+    // Define image paths (adjust these if your filenames are different)
+    private static final String SHIELD_IMG_PATH = "/org/example/invaders/rocketblasters/assets/shield_powerup.png"; // Example path
+    private static final String RAPID_FIRE_IMG_PATH = "/org/example/invaders/rocketblasters/assets/rapidfire_powerup.png"; // Example path
+    private static final String EXTRA_LIFE_IMG_PATH = "/org/example/invaders/rocketblasters/assets/extralife_powerup.png"; // Example path
+    private static final String SCORE_BONUS_IMG_PATH = "/org/example/invaders/rocketblasters/assets/scorebonus_powerup.png"; // Example path
+
+    // Define draw size for power-up images (adjust as needed)
+    private double powerUpDrawW = 30;
+    private double powerUpDrawH = 30;
+    private double powerUpHalfW = powerUpDrawW / 2.0;
+    private double powerUpHalfH = powerUpDrawH / 2.0;
+
+    // ... (rest of the power-up related fields like powerUps list, timers, etc.) ...
+
+    private enum PowerUpType {
+        SHIELD, RAPID_FIRE, EXTRA_LIFE, SCORE_BONUS
+    }
+
+    private static class PowerUp {
+        double x, y, vy;
+        PowerUpType type;
+        double radius = 15; // Collision and drawing radius
+
+        PowerUp(double x, double y, double vy, PowerUpType type) {
+            this.x = x;
+            this.y = y;
+            this.vy = vy;
+            this.type = type;
+        }
+    }
+
+    private final List<PowerUp> powerUps = new ArrayList<>();
+    private double powerUpSpawnTimer = 5.0; // Spawn roughly every 5 seconds initially
+
+    // Timers for temporary effects
+    private boolean shieldActive = false;
+    private double shieldTimer = 0.0;
+    private static final double SHIELD_DURATION = 5.0; // seconds
+
+    private boolean rapidFireActive = false;
+    private double rapidFireTimer = 0.0;
+    private static final double RAPID_FIRE_DURATION = 7.0; // seconds
+    private static final double RAPID_FIRE_MULTIPLIER = 0.5; // Halves the cooldown
+
+    // Inside GameController.java
+
+    private void spawnRandomPowerUp() {
+        double w = canvas.getWidth();
+        double spawnX = 50 + rnd.nextDouble() * (w - 100); // Spawn within screen bounds
+        double spawnY = -30; // Start just above the screen
+        double fallSpeed = 100 + rnd.nextDouble() * 50; // Random fall speed
+
+        // Choose a random type
+        PowerUpType[] types = PowerUpType.values();
+        PowerUpType randomType = types[rnd.nextInt(types.length)];
+
+        powerUps.add(new PowerUp(spawnX, spawnY, fallSpeed, randomType));
+    }
+
+    // Inside GameController.java
+
+    private void applyPowerUp(PowerUpType type) {
+        switch (type) {
+            case SHIELD:
+                shieldActive = true;
+                shieldTimer = SHIELD_DURATION;
+                // Maybe play shield activation sound
+                break;
+            case RAPID_FIRE:
+                rapidFireActive = true;
+                rapidFireTimer = RAPID_FIRE_DURATION;
+                // Maybe play rapid fire sound cue
+                break;
+            case EXTRA_LIFE:
+                if (lives < 5) { // Cap lives at 5, for example
+                    lives++;
+                    updateHud();
+                    // Maybe play extra life sound
+                }
+                break;
+            case SCORE_BONUS:
+                score += 100; // Add 100 points
+                if (score > best) best = score; // Check if it pushes score over best
+                updateHud();
+                // Maybe play score bonus sound
+                break;
+        }
+    }
+
+    // load power-up images
+
+    private void loadPowerUpImages() {
+        try {
+            shieldPowerUpImg = new Image(Objects.requireNonNull(
+                    getClass().getResourceAsStream(SHIELD_IMG_PATH)));
+        } catch (Exception ex) {
+            System.err.println("Could not load Shield power-up image: " + SHIELD_IMG_PATH);
+            shieldPowerUpImg = null; // Fallback handled in render
+        }
+        try {
+            rapidFirePowerUpImg = new Image(Objects.requireNonNull(
+                    getClass().getResourceAsStream(RAPID_FIRE_IMG_PATH)));
+        } catch (Exception ex) {
+            System.err.println("Could not load Rapid Fire power-up image: " + RAPID_FIRE_IMG_PATH);
+            rapidFirePowerUpImg = null;
+        }
+        try {
+            extraLifePowerUpImg = new Image(Objects.requireNonNull(
+                    getClass().getResourceAsStream(EXTRA_LIFE_IMG_PATH)));
+        } catch (Exception ex) {
+            System.err.println("Could not load Extra Life power-up image: " + EXTRA_LIFE_IMG_PATH);
+            extraLifePowerUpImg = null;
+        }
+        try {
+            scoreBonusPowerUpImg = new Image(Objects.requireNonNull(
+                    getClass().getResourceAsStream(SCORE_BONUS_IMG_PATH)));
+        } catch (Exception ex) {
+            System.err.println("Could not load Score Bonus power-up image: " + SCORE_BONUS_IMG_PATH);
+            scoreBonusPowerUpImg = null;
+        }
+    }
+
+    // Inside GameController.java
+
+    private void handleEndOfGameScore() {
+        System.out.println("DEBUG: handleEndOfGameScore() called. Current Mode: " + MainApp.currentGameMode); // Keep for debugging
+        saveBest(); // Always try saving overall best score
+
+        // REMOVED THE IF CHECK - Pop-up logic will now always run:
+        System.out.println("DEBUG: Preparing pop-up for leaderboard entry."); // Updated debug message
+
+        Platform.runLater(() -> {
+            System.out.println("DEBUG: Inside Platform.runLater - Creating TextInputDialog.");
+            TextInputDialog dialog = new TextInputDialog("Player"); // Default text
+            dialog.setTitle("Game Over - Leaderboard Entry");
+            dialog.setHeaderText("Congratulations! Your score: " + score);
+            dialog.setContentText("Please enter your name for the leaderboard:");
+
+            Optional<String> result = dialog.showAndWait();
+            System.out.println("DEBUG: Dialog shown. Result present: " + result.isPresent());
+
+            result.ifPresent(name -> {
+                String playerName = name.isBlank() ? "Anonymous" : name.trim();
+                System.out.println("DEBUG: Recording score for: " + playerName);
+                Leaderboard.record(playerName, score); // Record score regardless of mode
+            });
+        });
+    }
+
 }

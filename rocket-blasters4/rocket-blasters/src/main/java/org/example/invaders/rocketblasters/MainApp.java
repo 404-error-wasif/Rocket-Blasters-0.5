@@ -5,8 +5,10 @@ import javafx.fxml.FXMLLoader;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.stage.Stage;
-
 import java.io.IOException;
+import java.util.Objects;
+
+import org.example.invaders.rocketblasters.util.GameMode;
 
 /**
  * App entry + scene utilities (robust).
@@ -17,7 +19,8 @@ import java.io.IOException;
 public class MainApp extends Application {
 
     public static Stage PRIMARY_STAGE;                // global stage (set in start)
-    private static Scene scene;                       // shared scene for simple swaps
+    private static Scene scene;// shared scene for simple swaps
+    public static GameMode currentGameMode = GameMode.SINGLE_PLAYER;
 
     private static final double PREF_W = 1460;
     private static final double PREF_H = 980;
@@ -30,7 +33,7 @@ public class MainApp extends Application {
         PRIMARY_STAGE = stage;
 
         Parent root = FXMLLoader.load(
-                MainApp.class.getResource(RES_BASE + "Menu.fxml"));
+                Objects.requireNonNull(MainApp.class.getResource(RES_BASE + "SplashView.fxml")));
 
         scene = new Scene(root, PREF_W, PREF_H);
         stage.setTitle("Rocket Blasters");
@@ -38,6 +41,7 @@ public class MainApp extends Application {
         stage.setMinWidth(PREF_W);
         stage.setMinHeight(PREF_H);
         stage.centerOnScreen();
+        stage.setFullScreen(true); // Make the stage full-screen
         stage.show();
     }
 
